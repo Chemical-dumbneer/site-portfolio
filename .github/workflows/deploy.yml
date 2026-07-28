@@ -1,0 +1,50 @@
+name: Deploy Application
+
+on:
+  push:
+    branches: [ main ] # Ou 'master', dependendo da sua branch principal
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4' # Mantenha a mesma versão do PHP do seu servidor
+          extensions: mbstring, pdo, pdo_pgsql, bcmath
+
+      - name: Instalar Dependências do Composer
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Instalar Cloudflared
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Sincronizar arquivos com o Servidor (rsync)
+        uses: easingthemes/ssh-deploy@v6.0.3
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_CLIENT_SECRET }}
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          SSH_CMD_ARGS: "-v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand='cloudflared access ssh --hostname %h --id ${{ secrets.CF_CLIENT_ID }} --secret ${{ secrets.CF_CLIENT_SECRET }}'"
+          TARGET: "/var/www/html"
+          ARGS: "-avzr --delete --no-t"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /storage/, /bootstrap/cache/"
+          SCRIPT_AFTER: |
+            cd /var/www/html
+            php artisan migrate --force
+            php artisan config:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo chown -R www-data:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
