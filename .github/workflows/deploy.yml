@@ -49,8 +49,9 @@ jobs:
           REMOTE_USER: ${{ secrets.REMOTE_USER }}
           SSH_CMD_ARGS: "-v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand='cloudflared access ssh --hostname %h --id ${{ secrets.CF_CLIENT_ID }} --secret ${{ secrets.CF_CLIENT_SECRET }}'"
           TARGET: "/var/www/html"
-          ARGS: "-avzr --delete --no-t"
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /storage/, /bootstrap/cache/, /.env/"
+          # Adicionamos o --exclude=.env direto nas ARGS para o --delete não apagar o arquivo no servidor
+          ARGS: "-avzr --delete --no-t --exclude=.env --exclude=storage/ --exclude=database/*.sqlite"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /storage/, /bootstrap/cache/, /.env"
           SCRIPT_AFTER: |
             cd /var/www/html
             php artisan migrate --force
